@@ -1,0 +1,395 @@
+---
+title: "Influences on the Liberal Party Election Campaign"
+author: "Ahnaf Alam, Coco Ding, Krutika Joshi and Rue Sriharsha"
+subtitle: "The impact of education on voter's opinions"
+date: December 7, 2020
+output: 
+  beamer_presentation:
+    theme: "Pittsburgh"
+    colortheme: "orchid"
+    fonttheme: "structurebold"
+    slide_level: 2
+---
+
+\fontsize{14pt}{14}\selectfont
+
+This is the final project submission for STA130H1 : An Introduction to Statistical Reasoning and Data Science. 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include = FALSE}
+# echo=FALSE will stop the code chunk from appearing in the knit document
+# warning=FALSE and message=FALSE will stop R messages from appearing in the knit document
+library(tidyverse)
+library(dplyr)
+library(knitr)
+library(tidyr)
+library(RColorBrewer)
+library(gridExtra)
+# the data is not in the csv form we usually use, but in an R format, .rds.
+# the following line saves it as ces19 and you can work with it as you're used to now
+ces19 <- readRDS("ces19.rds")
+
+
+# see the project information page for more information: https://q.utoronto.ca/courses/184002/pages/project
+```
+
+## Introduction
+
+Education is an integral part of human society. When voters are better educated about their rights and electoral options, they are more satisfied with the democratic government. We look at the intersection of a voter's education level and their responses to various questions posed in the 2019 Online Canadian Election Survey. 
+
+The results of this research help the Liberal Party understand their voter's needs and the impact of their campaigning.
+ 
+
+## Objectives 
+
+Information on voter demographics for the Liberal Party Campaign Managers as a response to these three questions:
+
+- Does the education level influence the voter's opinion on the federal government's spending on education? Is there a difference in the understanding of the budget between voters with high education and low education levels?
+- Does a woman voter’s education level influence their opinion on the party leader of the Liberal Party? Is there a difference in their party leader rating based on their education level and their feeling towards politicians in general?
+- Does the education level influence the voter's opinion on the number of immigrants Canada should admit?
+
+## Data Summary 
+
+The data set provided was not tidy, that is, easy to use for statistical analysis. We selected the variables needed: citizenship, gender, education, leader rating for the Liberal Party, the number of immigrants that Canada should admit and the feeling towards politicians as a group.
+
+Canadian citizens from the age of 18 to 99 are considered Voters for the purpose of this study.
+
+As the survey participants selected their highest level of education completed, we split all the voters into two broad groups - "High Education level" and "Low Education Level". 
+    - All voters who completed upto secondary/high school were placed under "Low Education Level"
+    - All voters who completed community college and higher were placed under "High Education Level"
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+# Overall data cleaning
+
+ces_clean <- ces19 %>%
+   #select the variables and keep only rows with observations
+  select(gender, education, lead_rating_23, groups_therm_5, citizenship, age, province, imm, spend_imm_min, spend_educ)%>%
+  filter(!(is.na(lead_rating_23)))%>%
+  filter(!(is.na(groups_therm_5))) %>%
+  filter(!(is.na(education)))%>%
+  filter(!(is.na(citizenship)))%>%
+  filter(!(is.na(gender)))%>%
+  # mutating variables for better grouping
+  filter(citizenship == "Canadian citizen")%>%
+  mutate(education_level = ifelse(education %in% c("Some Technical", "No Schooling", "Completed elementary school", "Some secondary/ high school", "Completed secondary/ high school"), "Low Education", "High Education"))
+  #Splits the education levels into two groups - high and low, with high being anything "community college" and above,  and low being anything from "Some Technical" and below
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include = FALSE}
+#Statistical Analysis for Q1
+
+#Data Wrangling for q1
+q1_ces <- ces_clean %>%
+  filter(spend_educ != "Don't know/ Prefer not to answer")
+
+#Summary table to interpret Bar plot
+q1_ces %>% 
+  group_by(education_level) %>% 
+  summarise(n(),
+            spend_more = sum(spend_educ == "Spend more"),
+            spend_same = sum(spend_educ == "Spend about the same as now"),
+            spend_less = sum(spend_educ == "Spend less"))
+
+#Code for calculating Test Statistic
+test_stat <- q1_ces %>% 
+  group_by(education_level) %>% 
+  summarise(n=n(),
+            proportion_more = sum(spend_educ == "Spend more") / n()) %>% 
+  summarise(value = diff(proportion_more))
+
+test_stat <- as.numeric(test_stat)
+#outputs as -0.01590806
+
+# Simulation table for null hypothesis test
+set.seed(789)
+repetitions <- 1000
+simulated_values <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  sim_value <- q1_ces %>% 
+    mutate(education_level = sample(education_level)) %>% 
+    group_by(education_level) %>% 
+    summarise(proportion_more = sum(spend_educ == "Spend more") / n()) %>% 
+    summarise(value = diff(proportion_more))
+  
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(proportion_diff = simulated_values)
+
+# Histogram to understand the p-value
+sim %>% 
+  ggplot(aes(x = proportion_diff)) +
+  geom_histogram(color = "black",
+                 fill = "darkseagreen1",
+                 bins = 30) +
+  labs(x = "The Difference Between the Simulated Proportions of the 2 Groups")
+
+# Code to calculate p-value
+num_more_extreme <- sim %>% 
+  filter(abs(proportion_diff) >= abs(test_stat)) %>% summarise(n())
+
+p_value <- as.numeric(num_more_extreme / repetitions)
+# p_value = 0.034
+# we have moderate evidence against the null hypothesis
+```
+
+## Research Question 1
+
+Does the education level influence the voter's opinion on the federal government's spending on education? Is there a difference in the understanding of the budget between voters with high education and low education levels?
+
+- Voters who better understand the government's spending will be more likely to comment on this.
+- Federal spending on education affects the lives of voters and their families.
+
+### Population
+
+Data of all Canadian voters, except those who responded "Don't know/ Prefer not to answer" to the federal government spending question were considered.
+ 
+---
+
+### How much should the government spend on education
+
+```{r, echo=FALSE, message=FALSE, warning = FALSE, fig.height=4}
+# Bar plot for visualization
+q1_high <- q1_ces %>%
+  filter(education_level=="High Education")
+
+bar_high <- ggplot(data = q1_high, aes(x = spend_educ)) +
+  geom_bar( position = position_dodge(), color = "black", fill = "darkslategray2") +
+  labs(x = "How much the government \n should spend on education", y="Number of voters")+
+  ggtitle("Highly educated voters opinions \n on Government Spending on Education")+
+  coord_flip()+
+  theme_minimal()
+
+q1_low <- q1_ces %>%
+  filter(education_level=="Low Education")
+
+bar_low <- ggplot(data = q1_low, aes(x = spend_educ)) +
+  geom_bar( position = position_dodge(), color = "black", fill = "goldenrod1") +
+  labs(x = "How much the government \n should spend on education", y="Number of voters")+
+  ggtitle("Less educated voters opinions \n on Government Spending on Education")+
+  coord_flip()+
+  theme_minimal()
+
+grid.arrange(bar_high, bar_low)
+```
+
+- **80 %** of data comprise of voters with **\textcolor{blue}{high} education level** 
+- **20 %** of data comprise of voters with **\textcolor{purple}{low} education level**  
+
+- **68 %** of voters with **\textcolor{blue}{high} education level** think the government should spend more.
+- **65 %** of voters with **\textcolor{purple}{low} education level** think the government should spend more.
+
+---
+
+
+### Method
+- Hypothesis: There is no difference between the opinion on "spending on education" for the two groups - high and low education levels.
+- A two-group randomization test is performed to validate this hypothesis.
+- **Results**
+    - The p-value tells us whether the difference in opinions is due to chance or not. If it is closer to 1, there is evidence to support the hypothesis. 
+    - But the derived p-value is 0.034
+    - This indicates that education alone does not influence the voter's opinion.
+
+### Conclusion
+
+*A majority of both population subsets **agree that the federal government should spend more on education**.*
+
+---
+
+## Research Question 2
+
+Does a woman voter’s education level influence their opinion on the party leader of the Liberal Party? Is there a difference in their party leader rating based on their education level and their feeling towards politicians in general?
+
+- The party leader's speeches and interaction with women could influence their opinion and their rating of the party leader and the party.
+- This analysis helps the party determine if they need to make changes to their campaign message execution.
+
+### Population
+
+All Canadian voters who identify as women and gave a leader rating for the Liberal Party in 2019.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#Statistics for Q2
+
+#Data Wrangling for Q2
+q2_ces <- ces_clean %>%
+  filter(gender=="A woman")
+
+#Statistical Simulation
+model1 <- lm(lead_rating_23 ~ education_level, data = q2_ces)
+summary(model1)$coefficients
+# p-value = 1.31 x 10^-55, no evidence against the p-value
+
+model2 <- lm(groups_therm_5 ~ lead_rating_23, data = q2_ces)
+summary(model2)$coefficients
+# p-value = 0, very strong evidence against H_0: There is no difference between the leader rating and the feeling towards politicians in general.
+```
+
+
+---
+
+### Relationship between education levels, leader rating and feelings towards politicians in women voters
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=6, fig.height=3}
+# Scatterplot
+scatterplot <- q2_ces %>% ggplot(aes(x=lead_rating_23, y=groups_therm_5, color = education_level))+
+    geom_point(alpha=0.06)+
+  geom_smooth(method="lm", se=FALSE)+
+  labs(x="Leader Rating for Liberal Party",y="Feelings towards \n Politicians in general")
+
+lineplot <- q2_ces %>% ggplot(aes(x=lead_rating_23, y=groups_therm_5, color = education_level))+
+    geom_point(alpha=0.001)+
+  geom_smooth(method="lm", se=FALSE)+
+  labs(x="Leader Rating for Liberal Party",y="Feelings towards \n Politicians in general")
+
+grid.arrange(scatterplot, lineplot)
+```
+
+
+\fontsize{12pt}{12}\selectfont
+
+Due to the *near overlap and intersection* of the lines representing high and low education levels, we can say that women had similar ratings for the leader of the Liberal Party irrespective of their education levels.
+
+---
+
+
+### Method
+- Hypothesis:  There is no difference in the leader ratings for women with high and low education levels.
+- A fitted linear regression model is used to understand the relationship between women voter's leader rating and education level
+- We can only estimate based on the data collected. So, the results are subject to the variability in the sample data provided.
+- **Results**
+    - The derived p-value is extremely small and very close to 0. Hence there is strong evidence against this hypothesis.
+    - This indicates that education alone does not influence the voter's opinion and their feeling towards politicians as a group, has a strong impact.
+
+### Conclusion
+
+*The leader rating is not only influenced by a woman's education level but also by their feelings towards politicians in general.*
+
+---
+
+## Research Question 3
+
+Does the education level influence the voter's opinion on the number of immigrants Canada should admit
+
+\vspace{2cm}
+### Population
+
+Data collected from Canadian voters who answered the question of whether Canada should admit more immigrants, the same as now or fewer immigrants. The voters who responded Canada should admit more immigrants or the same as now are grouped together.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+##Statistics for Q3
+q3_ces <- ces_clean %>% 
+  filter(imm != "Don't know/ Prefer not to answer") %>%
+  mutate(imm_acceptance = case_when(imm == "About the same number of immigrants as now" | imm == "More immigrants" ~ 0,
+                                    imm == "Fewer immigrants" ~ 1))
+
+q3_ces %>% 
+  group_by(education_level) %>% 
+  summarise(n(),
+            admit_more = sum(imm == "More immigrants"),
+            admit_same = sum(imm == "About the same number of immigrants as now"),
+            admit_less = sum(imm == "Fewer immigrants"))
+
+test_stat3 <- q3_ces %>% 
+  group_by(education_level) %>% 
+  summarise(n=n(),
+            proportion_imm = sum(imm_acceptance == 0) / n()) %>% 
+  summarise(value = diff(proportion_imm))
+
+test_stat3 <- as.numeric(test_stat3)
+
+set.seed(123)
+repetitions <- 1000
+simulated_values3 <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  sim_value3 <- q3_ces %>% 
+    mutate(education_level = sample(education_level)) %>% 
+    group_by(education_level) %>% 
+    summarise(proportion_imm = sum(imm_acceptance == 0) / n()) %>% 
+    summarise(value = diff(proportion_imm))
+  
+  simulated_values3[i] <- as.numeric(sim_value3)
+}
+
+sim3 <- tibble(proportion_imm = simulated_values3)
+
+sim3 %>% 
+  ggplot(aes(x = proportion_imm)) +
+  geom_histogram(color = "black",
+                 fill = "lemonchiffon",
+                 bins = 30) +
+  labs(x = "The Difference Between the Simulated Proportions of the 2 Groups")
+
+num_more_extreme3 <- sim3 %>% 
+  filter(abs(proportion_imm) >= abs(test_stat3)) %>% summarise(n())
+
+p_value <- as.numeric(num_more_extreme3 / repetitions)
+# p-value = 0, very strong evidence against our null hypothesis
+```
+
+---
+
+### Voter's opinion on the number of immigrants Canada should admit
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=4}
+ggplot(data = q3_ces, aes(x = imm)) +
+  geom_bar(color = "black", fill = "coral1") +
+  labs(x = "How many immigrants should Canada admit", y = "Number of voters", 
+       title = "Voter's opinion on the number \n of immigrants Canada should admit") +
+  coord_flip() +
+  facet_wrap(~education_level)
+```
+
+- **80 %** of data comprise of voters with **\textcolor{blue}{high} education level** 
+- **20 %** of data comprise of voters with **\textcolor{purple}{low} education level**  
+
+- **63 %** of voters with **\textcolor{blue}{high} education level** said Canada should admit the same/more immigrants.
+- **41 %** of voters with **\textcolor{purple}{low} education level** said Canada should admit the same/more immigrants.
+
+---
+
+### Method
+- Hypothesis: There is no difference between the opinion on the number of immigrants Canada should admit for the two groups - high and low education levels.
+- A two-group randomization test is performed to validate this hypothesis.
+- **Results**
+    - The derived p-value is 0. Hence there is strong evidence against this hypothesis.
+    - This indicates that education does influence the voter's opinion on the number of immigrants Canada should admit. 
+    
+### Conclusion
+
+*A voter's opinion on how many immigrants Canada should admit is influenced by their education levels.*
+
+---
+
+
+## Overall Conclusion
+
+The results obtained do not state that education is the only deciding factor in a voter's opinion. We also did not run all the tests needed to rule out education as a deciding factor. 
+Hence we can say that ***education does influence a voter's opinion and understanding**, but it is not the only factor they base their responses on*. Other variables also impact their choices.
+
+
+### Limitation
+
+All the tests run were prediction or estimation tests and subject to sampling variability. 
+
+These may not be representative of the whole population's opinions.
+
+Furthermore, missing and unnecessary values were eliminated from the data used to make a better analysis. This could impact the results inferred.
+
+
+## Ethical Considerations
+
+The authors of this study did not make predictions on the voter's responses in the data. 
+
+A person's opinions and personal preferences are subject to change and making predictions on any of these would not be accurate or ethical.
+
+All the analyses conducted in this study only looked at trends between existing factors thought to influence a voter's opinion.
+
+
+## Acknowledgements 
+
+*The authors would like to thank Professor Bolton, Professor Moon, Maya Blumenthal, Mateja Perovic, Siqi Zheng, Rebecca Wu and Nina Munteanu for the helpful suggestions and comments that improved the presentation of this poster.*
+
+
